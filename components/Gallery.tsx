@@ -375,7 +375,7 @@ function Lightbox({
               sizes="90vw"
               alt=""
               draggable={false}
-              className="max-w-[92vw] max-h-full object-contain select-none"
+              className="max-w-[92vw] max-h-[calc(100dvh-7rem)] object-contain select-none"
             />
           </picture>
         </div>
@@ -447,11 +447,13 @@ function ClipSearchBar({
   };
 
   return (
-    <div className="mb-6 flex flex-col items-center gap-2">
+    <div className="mb-6 mx-auto w-full max-w-2xl px-4">
+      <div className="bg-stone-100 rounded-2xl px-4 py-3 flex flex-col gap-2">
+        <p className="text-xs text-stone-400 text-center select-none tracking-wide">AI 사진 검색 (CLIP)</p>
       {/* Input row */}
       <form
         onSubmit={(e) => { e.preventDefault(); handleSearch(input); }}
-        className="flex items-center gap-2 w-full max-w-lg"
+        className="flex items-center gap-2 w-full"
       >
         <div className="relative flex-1">
           <svg
@@ -498,13 +500,14 @@ function ClipSearchBar({
         </div>
       )}
       {state.status === "done" && (
-        <p className="text-stone-400 text-xs">
+        <p className="text-stone-400 text-xs text-center">
           상위 {state.results.length}개 결과
           <button onClick={handleClear} className="ml-2 text-stone-400 underline hover:text-stone-600">
             초기화
           </button>
         </p>
       )}
+      </div>
     </div>
   );
 }
