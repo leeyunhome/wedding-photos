@@ -1,9 +1,7 @@
 import dynamic from "next/dynamic";
 
-// Both components are large client-only bundles — skip SSR entirely so the
-// edge Worker only serves a lightweight HTML shell and never touches their
-// module graphs (which include @huggingface/transformers etc.).
-const HighlightVideo = dynamic(() => import("@/components/HighlightVideo"), { ssr: false });
+// Gallery is a large client-only bundle — skip SSR so the edge Worker
+// only serves a lightweight HTML shell.
 const Gallery = dynamic(() => import("@/components/Gallery"), { ssr: false });
 
 export const runtime = "edge";
@@ -19,7 +17,6 @@ export default function HomePage() {
           이윤호 · 진수빈
         </h1>
       </header>
-      <HighlightVideo />
       <Gallery />
     </main>
   );

@@ -16,6 +16,9 @@ import { getCategory } from "@/lib/storage";
 
 const FAVORITES_KEY = "wedding-favorites";
 const FAVORITES_FILTER = "즐겨찾기";
+const VIDEO_FILTER = "하이라이트 영상";
+const R2_URL = (process.env.NEXT_PUBLIC_R2_PUBLIC_URL ?? "").replace(/\/$/, "");
+const HIGHLIGHT_VIDEO_SRC = R2_URL ? `${R2_URL}/videos/highlight_web.mp4` : "";
 
 // ── useFavorites ──────────────────────────────────────────────────────────────
 
@@ -668,7 +671,43 @@ export default function Gallery() {
             </span>
           )}
         </button>
+
+        {HIGHLIGHT_VIDEO_SRC && (
+          <button
+            onClick={() => setActive(active === VIDEO_FILTER ? null : VIDEO_FILTER)}
+            className={`px-4 py-1.5 text-sm rounded-full border transition-colors flex items-center gap-1.5 ${
+              active === VIDEO_FILTER
+                ? "bg-stone-700 text-white border-stone-700"
+                : "border-stone-300 text-stone-500 hover:border-stone-500 hover:text-stone-700"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 flex-shrink-0" fill={active === VIDEO_FILTER ? "white" : "none"} stroke="currentColor" strokeWidth={2}>
+              <polygon points="5 3 19 12 5 21 5 3" />
+            </svg>
+            하이라이트 영상
+          </button>
+        )}
       </div>
+
+      {/* Video player */}
+      {active === VIDEO_FILTER && (
+        <div className="max-w-4xl mx-auto px-2 py-4">
+          <div className="relative w-full rounded-xl overflow-hidden shadow-lg bg-black" style={{ aspectRatio: "16/9" }}>
+            <video
+              controls
+              playsInline
+              preload="metadata"
+              className="w-full h-full"
+              key={HIGHLIGHT_VIDEO_SRC}
+            >
+              <source src={HIGHLIGHT_VIDEO_SRC} type="video/mp4" />
+            </video>
+          </div>
+          <p className="text-center text-xs text-stone-400 mt-3 select-none">
+            이윤호 · 진수빈 결혼식 하이라이트 영상
+          </p>
+        </div>
+      )}
 
       {/* Empty favorites state */}
       {active === FAVORITES_FILTER && filtered.length === 0 && (
@@ -686,10 +725,10 @@ export default function Gallery() {
         </div>
       )}
 
-      {/* Virtualized photo grid */}
+      {/* Virtualized photo grid — hidden when video tab is active */}
       <div
         ref={gridRef}
-        style={{ position: "relative", height: rowVirtualizer.getTotalSize() }}
+        style={{ position: "relative", height: active === VIDEO_FILTER ? 0 : rowVirtualizer.getTotalSize(), overflow: active === VIDEO_FILTER ? "hidden" : undefined }}
       >
         {rowVirtualizer.getVirtualItems().map((vRow) => (
           <div
