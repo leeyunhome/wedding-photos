@@ -175,7 +175,7 @@ function SimilarityPanel({
     return (
       <button
         onClick={(e) => { e.stopPropagation(); handleFind(); }}
-        className="text-white/40 hover:text-white/80 text-xs border border-white/15 hover:border-white/30 rounded-full px-3 py-1.5 transition-colors flex items-center gap-2"
+        className="text-white/75 hover:text-white text-xs border border-white/35 hover:border-white/60 rounded-full px-3 py-1.5 transition-colors flex items-center gap-2"
       >
         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
           <circle cx="11" cy="11" r="8" />
@@ -216,7 +216,7 @@ function SimilarityPanel({
       <div className="flex flex-col items-center gap-1" onClick={(e) => e.stopPropagation()}>
         <button
           onClick={handleFind}
-          className="text-white/40 text-xs hover:text-white/60 transition-colors border border-white/15 rounded-full px-3 py-1"
+          className="text-white/75 text-xs hover:text-white transition-colors border border-white/35 rounded-full px-3 py-1"
         >
           분석 실패 — 다시 시도
         </button>
