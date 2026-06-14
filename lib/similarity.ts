@@ -1,17 +1,25 @@
+/// <reference types="@webgpu/types" />
 /**
- * WebGPU-accelerated visual similarity search using MobileNetV2 embeddings.
- * All computation runs client-side; embeddings are cached in IndexedDB so
- * subsequent searches are instant.
+ * Visual similarity search via color histograms.
  *
- * Backend priority: WebGPU → WebGL → CPU
+ * Compute path:
+ *   WebGPU — all 1268 images processed in ONE compute dispatch (WGSL shader)
+ *   Fallback — Canvas 2D per-image on CPU
+ *
+ * Input: LQIP data URIs already in memory (from manifest). No network requests.
+ * Speed: first run ~1–2 s (WebGPU) or ~3 s (CPU). Subsequent: instant (IndexedDB).
  */
 
 import type { Photo } from "./types";
 
-// ── IndexedDB helpers ─────────────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
+const BINS = 8;               // bins per RGB channel (8 = 3 bits)
+const NUM_BINS = BINS ** 3;   // 512 total histogram buckets
+const THUMB = 32;             // resize every LQIP to 32×32 before histogramming
 
-const DB_NAME = "wedding-sim-v1";
-const DB_STORE = "embeddings";
+// ── IndexedDB ─────────────────────────────────────────────────────────────────
+const DB_NAME = "wedding-sim-v3";
+const DB_STORE = "hists";
 
 function idbOpen(): Promise<IDBDatabase> {
   return new Promise((res, rej) => {
@@ -21,15 +29,13 @@ function idbOpen(): Promise<IDBDatabase> {
     r.onerror = () => rej(r.error);
   });
 }
-
 function idbGet(db: IDBDatabase, key: string): Promise<Float32Array | null> {
   return new Promise((res) => {
-    const req = db.transaction(DB_STORE).objectStore(DB_STORE).get(key);
-    req.onsuccess = () => res(req.result ?? null);
-    req.onerror = () => res(null);
+    const r = db.transaction(DB_STORE).objectStore(DB_STORE).get(key);
+    r.onsuccess = () => res(r.result ?? null);
+    r.onerror = () => res(null);
   });
 }
-
 function idbPut(db: IDBDatabase, key: string, val: Float32Array): Promise<void> {
   return new Promise((res, rej) => {
     const tx = db.transaction(DB_STORE, "readwrite");
@@ -39,8 +45,7 @@ function idbPut(db: IDBDatabase, key: string, val: Float32Array): Promise<void> 
   });
 }
 
-// ── Math ──────────────────────────────────────────────────────────────────────
-
+// ── Cosine similarity ─────────────────────────────────────────────────────────
 function cosine(a: Float32Array, b: Float32Array): number {
   let dot = 0, na = 0, nb = 0;
   for (let i = 0; i < a.length; i++) {
@@ -51,111 +56,212 @@ function cosine(a: Float32Array, b: Float32Array): number {
   return dot / (Math.sqrt(na * nb) + 1e-10);
 }
 
-// ── Image helpers ─────────────────────────────────────────────────────────────
+// ── LQIP → 32×32 RGBA pixels ──────────────────────────────────────────────────
+function photoToPixels(photo: Photo): Promise<Uint8ClampedArray> {
+  return new Promise((resolve, reject) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = THUMB;
+    canvas.height = THUMB;
+    const ctx = canvas.getContext("2d")!;
 
-function smallestJpeg(photo: Photo): string {
-  const jpegs = photo.variants
-    .filter((v) => v.format === "jpeg")
-    .sort((a, b) => a.bytes - b.bytes);
-  return jpegs[0]?.path ?? photo.fallback;
-}
-
-function loadImg(src: string): Promise<HTMLImageElement> {
-  return new Promise((res, rej) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => res(img);
-    img.onerror = rej;
-    img.src = src;
+    if (photo.placeholder.type === "lqip" && photo.placeholder.dataURI) {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, THUMB, THUMB);
+        resolve(ctx.getImageData(0, 0, THUMB, THUMB).data);
+      };
+      img.onerror = reject;
+      img.src = photo.placeholder.dataURI;
+    } else {
+      // Solid-color placeholder → fill canvas
+      ctx.fillStyle = photo.placeholder.color ?? "#888888";
+      ctx.fillRect(0, 0, THUMB, THUMB);
+      resolve(ctx.getImageData(0, 0, THUMB, THUMB).data);
+    }
   });
 }
 
-// ── Model singleton ───────────────────────────────────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _model: any = null;
-let _backend = "unknown";
-
-async function getModel() {
-  if (_model) return { model: _model, backend: _backend };
-
-  const tf = await import("@tensorflow/tfjs");
-
-  // Try WebGPU first (Chrome/Edge 113+), fall back to WebGL GPU
-  try {
-    await import("@tensorflow/tfjs-backend-webgpu");
-    await tf.setBackend("webgpu");
-    await tf.ready();
-    _backend = "webgpu";
-  } catch {
-    await tf.setBackend("webgl");
-    await tf.ready();
-    _backend = "webgl";
+// ── CPU histogram (Canvas fallback) ──────────────────────────────────────────
+function cpuHistogram(pixels: Uint8ClampedArray): Float32Array {
+  const hist = new Float32Array(NUM_BINS);
+  const shift = 5; // 8 bits → 3 bits (8 bins)
+  const n = pixels.length / 4;
+  for (let i = 0; i < pixels.length; i += 4) {
+    hist[(pixels[i] >> shift) * 64 + (pixels[i + 1] >> shift) * 8 + (pixels[i + 2] >> shift)]++;
   }
-
-  const mn = await import("@tensorflow-models/mobilenet");
-  _model = await mn.load({ version: 2, alpha: 1.0 });
-
-  return { model: _model as typeof _model, backend: _backend };
+  for (let i = 0; i < NUM_BINS; i++) hist[i] /= n;
+  return hist;
 }
 
-// ── Embedding extraction ──────────────────────────────────────────────────────
+// ── WebGPU batch histogram (WGSL compute shader) ──────────────────────────────
+//
+// One workgroup per image; 256 threads stride over that image's pixels.
+// atomicAdd accumulates per-image, per-bin counts into a flat storage buffer.
+//
+const WGSL = /* wgsl */ `
+struct Params { num_images: u32, ppi: u32, num_bins: u32 }
 
-async function embed(
+@group(0) @binding(0) var<uniform>              params    : Params;
+@group(0) @binding(1) var<storage, read>         all_px   : array<u32>;
+@group(0) @binding(2) var<storage, read_write>   all_hist : array<atomic<u32>>;
+
+@compute @workgroup_size(256)
+fn main(
+  @builtin(workgroup_id)       wg  : vec3<u32>,
+  @builtin(local_invocation_id) lid : vec3<u32>,
+) {
+  let img = wg.x;
+  if (img >= params.num_images) { return; }
+
+  let px_base   = img * params.ppi;
+  let hist_base = img * params.num_bins;
+
+  var i = lid.x;
+  loop {
+    if (i >= params.ppi) { break; }
+    let p = all_px[px_base + i];
+    let r = (p         & 0xFFu) >> 5u;   // 0-7
+    let g = ((p >> 8u) & 0xFFu) >> 5u;
+    let b = ((p >>16u) & 0xFFu) >> 5u;
+    atomicAdd(&all_hist[hist_base + r * 64u + g * 8u + b], 1u);
+    i += 256u;  // stride by workgroup_size
+  }
+}
+`;
+
+async function webgpuBatchHistogram(
+  pixelArrays: Uint8ClampedArray[]
+): Promise<{ hists: Float32Array[]; backend: string }> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  model: any,
-  db: IDBDatabase,
-  photo: Photo
-): Promise<Float32Array> {
-  const cached = await idbGet(db, photo.id);
-  if (cached) return cached;
+  const gpu = (navigator as any).gpu as GPU | undefined;
+  if (!gpu) throw new Error("WebGPU not available");
 
-  const img = await loadImg(smallestJpeg(photo));
+  const adapter = await gpu.requestAdapter();
+  if (!adapter) throw new Error("No WebGPU adapter");
+  const device = await adapter.requestDevice();
 
-  // MobileNetV2 infer with embedding=true → Tensor2D [1, 1280]
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const raw: any = model.infer(img, true);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const flat: any = raw.squeeze();
-  const data = new Float32Array(await flat.data());
-  raw.dispose();
-  flat.dispose();
+  const N = pixelArrays.length;
+  const ppi = THUMB * THUMB; // pixels per image
 
-  await idbPut(db, photo.id, data);
-  return data;
+  // Pack all RGBA arrays into one flat Uint32Array
+  const flat = new Uint32Array(N * ppi);
+  for (let img = 0; img < N; img++) {
+    const src = pixelArrays[img];
+    const base = img * ppi;
+    for (let j = 0; j < ppi; j++) {
+      const s = j * 4;
+      flat[base + j] = src[s] | (src[s + 1] << 8) | (src[s + 2] << 16) | (src[s + 3] << 24);
+    }
+  }
+
+  // GPU buffers
+  const pBuf = device.createBuffer({ size: 12, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(pBuf, 0, new Uint32Array([N, ppi, NUM_BINS]));
+
+  const pxBuf = device.createBuffer({ size: flat.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+  device.queue.writeBuffer(pxBuf, 0, flat);
+
+  const histSize = N * NUM_BINS * 4;
+  const histGPU = device.createBuffer({ size: histSize, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+  const readBuf = device.createBuffer({ size: histSize, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+
+  // Pipeline & bind group
+  const pipeline = await device.createComputePipelineAsync({
+    layout: "auto",
+    compute: { module: device.createShaderModule({ code: WGSL }), entryPoint: "main" },
+  });
+  const bg = device.createBindGroup({
+    layout: pipeline.getBindGroupLayout(0),
+    entries: [
+      { binding: 0, resource: { buffer: pBuf } },
+      { binding: 1, resource: { buffer: pxBuf } },
+      { binding: 2, resource: { buffer: histGPU } },
+    ],
+  });
+
+  // Dispatch all images in one call
+  const enc = device.createCommandEncoder();
+  const pass = enc.beginComputePass();
+  pass.setPipeline(pipeline);
+  pass.setBindGroup(0, bg);
+  pass.dispatchWorkgroups(N); // one workgroup per image
+  pass.end();
+  enc.copyBufferToBuffer(histGPU, 0, readBuf, 0, histSize);
+  device.queue.submit([enc.finish()]);
+
+  await readBuf.mapAsync(GPUMapMode.READ);
+  const raw = new Uint32Array(readBuf.getMappedRange());
+
+  const hists: Float32Array[] = [];
+  for (let i = 0; i < N; i++) {
+    const hist = new Float32Array(NUM_BINS);
+    const base = i * NUM_BINS;
+    for (let j = 0; j < NUM_BINS; j++) hist[j] = raw[base + j] / ppi;
+    hists.push(hist);
+  }
+
+  readBuf.unmap();
+  device.destroy();
+  return { hists, backend: "webgpu" };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export type ProgressCallback = (done: number, total: number, backend: string) => void;
 
-/**
- * Returns the top `topN` photos most visually similar to `target`.
- * First call loads the model (~16 MB from Google CDN, then browser-cached).
- * Embeddings are cached per-photo in IndexedDB after first computation.
- */
 export async function findSimilar(
   allPhotos: Photo[],
   target: Photo,
   topN = 12,
   onProgress?: ProgressCallback
 ): Promise<Photo[]> {
-  const [{ model, backend }, db] = await Promise.all([getModel(), idbOpen()]);
+  const db = await idbOpen();
 
-  const targetEmb = await embed(model, db, target);
-  const others = allPhotos.filter((p) => p.id !== target.id);
+  // Load cached histograms; collect uncached photos
+  const cached = new Map<string, Float32Array>();
+  const uncached: Photo[] = [];
 
-  const scored: Array<{ photo: Photo; score: number }> = [];
-  let done = 0;
-
-  for (const photo of others) {
-    const emb = await embed(model, db, photo);
-    scored.push({ photo, score: cosine(targetEmb, emb) });
-    done++;
-    onProgress?.(done, others.length, backend);
+  for (const p of allPhotos) {
+    const h = await idbGet(db, p.id);
+    if (h) cached.set(p.id, h);
+    else uncached.push(p);
   }
 
-  return scored
+  onProgress?.(allPhotos.length - uncached.length, allPhotos.length, "cache");
+
+  if (uncached.length > 0) {
+    onProgress?.(0, uncached.length, "decoding");
+
+    // Decode LQIP → pixel arrays (fast, in-memory data URIs)
+    const pixelArrays = await Promise.all(uncached.map(photoToPixels));
+
+    // Compute histograms — WebGPU batch (single dispatch) or CPU fallback
+    let hists: Float32Array[];
+    let backend: string;
+
+    try {
+      ({ hists, backend } = await webgpuBatchHistogram(pixelArrays));
+    } catch {
+      hists = pixelArrays.map(cpuHistogram);
+      backend = "canvas";
+    }
+
+    onProgress?.(uncached.length, uncached.length, backend);
+
+    // Cache
+    for (let i = 0; i < uncached.length; i++) {
+      await idbPut(db, uncached[i].id, hists[i]);
+      cached.set(uncached[i].id, hists[i]);
+    }
+  }
+
+  // Score all photos against target
+  const targetHist = cached.get(target.id);
+  if (!targetHist) throw new Error("target histogram missing");
+
+  return allPhotos
+    .filter((p) => p.id !== target.id)
+    .map((p) => ({ photo: p, score: cosine(targetHist, cached.get(p.id)!) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, topN)
     .map((r) => r.photo);

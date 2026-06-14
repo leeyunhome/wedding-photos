@@ -187,26 +187,16 @@ function SimilarityPanel({
   }
 
   if (state.status === "loading") {
-    const pct = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
+    const label =
+      state.backend === "cache" ? "캐시 로딩 중..." :
+      state.backend === "decoding" ? "LQIP 디코딩 중..." :
+      state.backend === "webgpu" || state.backend === "canvas"
+        ? `분석 완료 (${state.backend})`
+        : "분석 중...";
     return (
-      <div className="flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 text-white/40 text-xs">
-          <div className="w-3 h-3 border border-white/25 border-t-white/60 rounded-full animate-spin" />
-          {state.done === 0
-            ? "모델 로딩 중 (첫 실행 약 20초)..."
-            : `분석 중 ${pct}%`}
-          {state.backend && state.backend !== "unknown" && (
-            <span className="text-white/20">· {state.backend}</span>
-          )}
-        </div>
-        {state.done > 0 && (
-          <div className="w-40 bg-white/10 rounded-full h-0.5">
-            <div
-              className="bg-white/35 h-0.5 rounded-full transition-all duration-100"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
-        )}
+      <div className="flex items-center gap-2 text-white/50 text-xs" onClick={(e) => e.stopPropagation()}>
+        <div className="w-3 h-3 border border-white/25 border-t-white/70 rounded-full animate-spin" />
+        {label}
       </div>
     );
   }
