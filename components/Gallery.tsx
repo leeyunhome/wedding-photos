@@ -309,91 +309,98 @@ function Lightbox({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/92"
+      className="fixed inset-0 z-50 flex flex-col bg-black/95"
       onClick={onClose}
     >
-      {/* Photo */}
-      <div className="relative" onClick={(e) => e.stopPropagation()}>
-        <picture>
-          {photo.srcset.avif && (
-            <source type="image/avif" srcSet={photo.srcset.avif} sizes="90vw" />
-          )}
-          {photo.srcset.webp && (
-            <source type="image/webp" srcSet={photo.srcset.webp} sizes="90vw" />
-          )}
-          <img
-            src={photo.fallback}
-            srcSet={photo.srcset.jpeg}
-            sizes="90vw"
-            alt=""
-            draggable={false}
-            className="max-w-[90vw] max-h-[68vh] object-contain select-none"
-          />
-        </picture>
-      </div>
-
-      {/* Counter + similarity — always visible below photo */}
+      {/* ── Top bar ── */}
       <div
-        className="flex flex-col items-center gap-3"
+        className="flex items-center justify-between px-4 py-3 bg-black/60 backdrop-blur-sm flex-shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="text-white/50 text-sm tabular-nums">
-          {index + 1} / {total}
+        {/* Counter */}
+        <span className="text-white/70 text-sm tabular-nums select-none">
+          {index + 1} <span className="text-white/35">/ {total}</span>
+        </span>
+
+        {/* Right: favorite + close */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onToggleFavorite(photo.id)}
+            aria-label={isFav ? "즐겨찾기 해제" : "즐겨찾기"}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+          >
+            <svg viewBox="0 0 24 24" className="w-4 h-4 flex-shrink-0"
+              fill={isFav ? "#f87171" : "none"} stroke={isFav ? "#f87171" : "white"} strokeWidth={2}>
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+            </svg>
+            <span className="text-white text-xs">{isFav ? "저장됨" : "저장"}</span>
+          </button>
+
+          <button
+            onClick={onClose}
+            aria-label="닫기"
+            className="flex items-center justify-center w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 transition-colors text-white text-xl leading-none"
+          >
+            ×
+          </button>
         </div>
+      </div>
+
+      {/* ── Photo area ── */}
+      <div className="flex-1 flex items-center justify-center relative min-h-0" onClick={onClose}>
+        {/* Prev */}
+        {total > 1 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); prev(); }}
+            aria-label="이전"
+            className="absolute left-3 z-10 flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 text-white text-2xl leading-none transition-colors select-none"
+          >
+            ‹
+          </button>
+        )}
+
+        <div onClick={(e) => e.stopPropagation()}>
+          <picture>
+            {photo.srcset.avif && (
+              <source type="image/avif" srcSet={photo.srcset.avif} sizes="90vw" />
+            )}
+            {photo.srcset.webp && (
+              <source type="image/webp" srcSet={photo.srcset.webp} sizes="90vw" />
+            )}
+            <img
+              src={photo.fallback}
+              srcSet={photo.srcset.jpeg}
+              sizes="90vw"
+              alt=""
+              draggable={false}
+              className="max-w-[92vw] max-h-full object-contain select-none"
+            />
+          </picture>
+        </div>
+
+        {/* Next */}
+        {total > 1 && (
+          <button
+            onClick={(e) => { e.stopPropagation(); next(); }}
+            aria-label="다음"
+            className="absolute right-3 z-10 flex items-center justify-center w-10 h-10 rounded-full bg-black/50 hover:bg-black/70 text-white text-2xl leading-none transition-colors select-none"
+          >
+            ›
+          </button>
+        )}
+      </div>
+
+      {/* ── Bottom bar ── */}
+      <div
+        className="flex items-center justify-center px-4 py-3 bg-black/60 backdrop-blur-sm flex-shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
         <SimilarityPanel
           allPhotos={allPhotos}
           current={photo}
           onSelect={handleSelectSimilar}
         />
       </div>
-
-      {/* Close */}
-      <button
-        onClick={onClose}
-        className="absolute top-4 right-5 text-white/60 hover:text-white text-4xl leading-none transition-colors"
-        aria-label="닫기"
-      >
-        ×
-      </button>
-
-      {/* Favorite */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggleFavorite(photo.id); }}
-        aria-label={isFav ? "즐겨찾기 해제" : "즐겨찾기"}
-        className="absolute top-4 right-14 flex items-center justify-center w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          className="w-5 h-5"
-          fill={isFav ? "#f87171" : "none"}
-          stroke={isFav ? "#f87171" : "white"}
-          strokeWidth={2}
-        >
-          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-        </svg>
-      </button>
-
-      {/* Prev */}
-      {total > 1 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); prev(); }}
-          className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-5xl leading-none px-2 py-4 transition-colors"
-          aria-label="이전"
-        >
-          ‹
-        </button>
-      )}
-
-      {/* Next */}
-      {total > 1 && (
-        <button
-          onClick={(e) => { e.stopPropagation(); next(); }}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-5xl leading-none px-2 py-4 transition-colors"
-          aria-label="다음"
-        >
-          ›
-        </button>
-      )}
     </div>
   );
 }
