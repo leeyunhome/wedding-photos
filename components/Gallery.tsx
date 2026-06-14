@@ -308,7 +308,7 @@ function Lightbox({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/92"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-black/92"
       onClick={onClose}
     >
       {/* Photo */}
@@ -326,9 +326,24 @@ function Lightbox({
             sizes="90vw"
             alt=""
             draggable={false}
-            className="max-w-[90vw] max-h-[75vh] object-contain select-none"
+            className="max-w-[90vw] max-h-[68vh] object-contain select-none"
           />
         </picture>
+      </div>
+
+      {/* Counter + similarity — always visible below photo */}
+      <div
+        className="flex flex-col items-center gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-white/50 text-sm tabular-nums">
+          {index + 1} / {total}
+        </div>
+        <SimilarityPanel
+          allPhotos={allPhotos}
+          current={photo}
+          onSelect={handleSelectSimilar}
+        />
       </div>
 
       {/* Close */}
@@ -378,21 +393,6 @@ function Lightbox({
           ›
         </button>
       )}
-
-      {/* Bottom: counter + similarity panel */}
-      <div
-        className="absolute bottom-4 left-0 right-0 flex flex-col items-center gap-3"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-white/35 text-sm tabular-nums">
-          {index + 1} / {total}
-        </div>
-        <SimilarityPanel
-          allPhotos={allPhotos}
-          current={photo}
-          onSelect={handleSelectSimilar}
-        />
-      </div>
     </div>
   );
 }
