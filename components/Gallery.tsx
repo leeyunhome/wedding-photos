@@ -349,7 +349,7 @@ function Lightbox({
       </div>
 
       {/* ── Photo area ── */}
-      <div className="flex-1 flex items-center justify-center relative min-h-0" onClick={onClose}>
+      <div className="flex-1 min-h-0 overflow-hidden flex items-center justify-center relative" onClick={onClose}>
         {/* Prev */}
         {total > 1 && (
           <button
@@ -361,8 +361,8 @@ function Lightbox({
           </button>
         )}
 
-        <div onClick={(e) => e.stopPropagation()}>
-          <picture>
+        <div className="h-full w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+          <picture className="contents">
             {photo.srcset.avif && (
               <source type="image/avif" srcSet={photo.srcset.avif} sizes="90vw" />
             )}
@@ -375,7 +375,7 @@ function Lightbox({
               sizes="90vw"
               alt=""
               draggable={false}
-              className="max-w-[92vw] max-h-[calc(100dvh-7rem)] object-contain select-none"
+              className="max-w-[92vw] max-h-full object-contain select-none"
             />
           </picture>
         </div>
