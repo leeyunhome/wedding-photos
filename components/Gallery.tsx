@@ -447,7 +447,7 @@ function ClipSearchBar({
   };
 
   return (
-    <div className="mb-5 flex flex-col items-center gap-2">
+    <div className="mb-6 flex flex-col items-center gap-2">
       {/* Input row */}
       <form
         onSubmit={(e) => { e.preventDefault(); handleSearch(input); }}
@@ -465,14 +465,14 @@ function ClipSearchBar({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="CLIP 검색 — 예) 신부 웨딩드레스, 가족사진, 케이크"
-            className="w-full pl-9 pr-8 py-2 text-sm border border-stone-200 rounded-full bg-white focus:outline-none focus:border-stone-400 text-stone-700 placeholder:text-stone-300"
+            placeholder="AI 검색 — 예) 신부 웨딩드레스, 가족사진, 케이크"
+            className="w-full pl-9 pr-8 py-2.5 text-sm border-2 border-stone-300 rounded-full bg-white shadow-sm focus:outline-none focus:border-stone-500 text-stone-700 placeholder:text-stone-400 transition-colors"
           />
           {input && (
             <button
               type="button"
               onClick={handleClear}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-300 hover:text-stone-500 text-lg leading-none"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-600 text-lg leading-none"
             >
               ×
             </button>
@@ -481,7 +481,7 @@ function ClipSearchBar({
         <button
           type="submit"
           disabled={!input.trim() || state.status === "loading"}
-          className="px-4 py-2 text-sm rounded-full bg-stone-700 text-white disabled:opacity-40 hover:bg-stone-600 transition-colors flex-shrink-0"
+          className="px-4 py-2.5 text-sm rounded-full bg-stone-700 text-white disabled:opacity-40 hover:bg-stone-600 transition-colors flex-shrink-0 shadow-sm"
         >
           검색
         </button>
