@@ -1,12 +1,8 @@
-import { getPhotos, getCategories } from "@/lib/storage";
 import Gallery from "@/components/Gallery";
 
 export const runtime = "edge";
 
-export default async function HomePage() {
-  const photos = await getPhotos();
-  const categories = getCategories(photos);
-
+export default function HomePage() {
   return (
     <main>
       <header className="py-12 text-center select-none">
@@ -17,10 +13,7 @@ export default async function HomePage() {
           이윤호 · 진수빈
         </h1>
       </header>
-      <Gallery photos={photos} categories={categories} />
-      <footer className="py-8 text-center text-xs text-stone-300 select-none">
-        {photos.length} photos
-      </footer>
+      <Gallery />
     </main>
   );
 }

@@ -511,14 +511,19 @@ function ClipSearchBar({
 
 // ── Gallery ───────────────────────────────────────────────────────────────────
 
-export default function Gallery({
-  photos,
-  categories,
-}: {
-  photos: Photo[];
-  categories: string[];
-}) {
+export default function Gallery() {
+  const [photos, setPhotos] = useState<Photo[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [loadError, setLoadError] = useState(false);
   const [active, setActive] = useState<string | null>(null);
+
+  useEffect(() => {
+    import("@/lib/storage").then(({ getPhotos, getCategories }) =>
+      getPhotos()
+        .then((p) => { setPhotos(p); setCategories(getCategories(p)); })
+        .catch(() => setLoadError(true))
+    );
+  }, []);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const { favorites, toggle: toggleFavorite } = useFavorites();
   const [clipState, setClipState] = useState<ClipState>({ status: "idle" });
@@ -581,6 +586,22 @@ export default function Gallery({
     overscan: 3,
     scrollMargin,
   });
+
+  if (loadError) {
+    return (
+      <div className="py-20 text-center text-stone-400 text-sm">
+        사진을 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.
+      </div>
+    );
+  }
+
+  if (photos.length === 0) {
+    return (
+      <div className="py-20 text-center text-stone-300 text-sm select-none">
+        사진 불러오는 중…
+      </div>
+    );
+  }
 
   return (
     <div className="px-2 pb-16 max-w-screen-2xl mx-auto">
@@ -709,6 +730,10 @@ export default function Gallery({
           onClose={() => setLightboxIndex(null)}
         />
       )}
+
+      <footer className="py-8 text-center text-xs text-stone-300 select-none">
+        {photos.length} photos
+      </footer>
     </div>
   );
 }
