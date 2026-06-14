@@ -1,7 +1,7 @@
-export const runtime = "edge";
-
 import { getPhotos, getCategories } from "@/lib/storage";
 import Gallery from "@/components/Gallery";
+
+export const runtime = "edge";
 
 export default async function HomePage() {
   const photos = await getPhotos();

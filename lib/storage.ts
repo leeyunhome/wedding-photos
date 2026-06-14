@@ -40,9 +40,7 @@ export async function getPhotos(): Promise<Photo[]> {
   if (!R2_URL) return MOCK_PHOTOS;
 
   try {
-    const res = await fetch(`${R2_URL}/manifest.json`, {
-      next: { revalidate: 300 },
-    });
+    const res = await fetch(`${R2_URL}/manifest.json`);
     if (!res.ok) return MOCK_PHOTOS;
     const manifest: ImgforgeManifest = await res.json();
     return manifest.images.map(resolvePhoto);
