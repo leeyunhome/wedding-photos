@@ -1,0 +1,26 @@
+# env — never commit real credentials
+.env.local
+.env*.local
+
+# Next.js
+.next/
+.vercel/
+out/
+
+# source photos and optimized output — too large for git, live in R2
+images/
+optimized/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Node
+node_modules/

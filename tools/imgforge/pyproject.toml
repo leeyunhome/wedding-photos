@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "imgforge"
+version = "0.1.0"
+description = "General-purpose CLI to optimize photo directories into responsive web/mobile derivatives (AVIF/WebP/JPEG) with a frontend manifest."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "imgforge" }]
+keywords = ["images", "avif", "webp", "responsive", "optimization", "srcset", "thumbnail"]
+
+# Base install needs only Pillow. Modern Pillow wheels (>=11.3) bundle libavif
+# (AVIF), libwebp and libjpeg-turbo, so AVIF/WebP/JPEG all work with no extra
+# native dependency. Config is TOML/JSON via the stdlib (tomllib/json) -> no YAML dep.
+dependencies = ["Pillow>=11.3"]
+
+[project.optional-dependencies]
+heic = ["pillow-heif>=0.16"]   # decode .heic/.heif sources
+vips = ["pyvips>=2.2"]         # optional faster/low-memory backend (not required)
+
+[project.scripts]
+imgforge = "imgforge.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/imgforge"]

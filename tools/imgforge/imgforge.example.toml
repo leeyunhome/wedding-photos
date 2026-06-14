@@ -1,0 +1,39 @@
+# Example imgforge config. Copy to `imgforge.toml` at your project root (or pass
+# with -c). Precedence: CLI flags > this file > built-in profile defaults.
+# imgforge auto-discovers `imgforge.toml` / `imgforge.json` by walking up from
+# the source directory.
+
+[defaults]
+# These apply under every profile; a profile's own settings override them.
+placeholder = "lqip"     # none | color | lqip  (lqip = base64 micro-blur, no JS needed)
+enlarge      = false     # never produce a derivative larger than the source
+sharpen      = true      # light unsharp mask after downscale
+embed_srgb   = true      # embed a tiny (~0.6 KB) sRGB ICC profile in full-size outputs
+
+# ---- The default profile -----------------------------------------------------
+[profiles.web-gallery]
+formats = ["avif", "webp", "jpeg"]    # ordered; the LAST is the <img> fallback
+sizes   = [400, 640, 1024, 1600, 2048]  # long-edge widths for the responsive ladder
+naming  = "{stem}_{width}.{ext}"        # tokens: {stem} {width} {ext} {format}
+
+# Per-format quality. These numbers are NOT interchangeable across codecs:
+# AVIF q63 ~= WebP q80 ~= JPEG q82 at equal perceived quality.
+[profiles.web-gallery.quality]
+avif = 63
+webp = 80
+jpeg = 82
+
+# ---- Derived profiles: extend a built-in / another profile, override the rest -
+[profiles.thumbs]
+extends = "thumbnail-only"   # built-in: webp+jpeg, tiny sizes
+sizes   = [240, 480]
+
+[profiles.print]
+extends = "full"             # built-in: adds 2560 + 3840 widths
+[profiles.print.quality]
+avif = 60
+jpeg = 88
+
+# Built-in profiles always available without any config:
+#   web-gallery (default), thumbnail-only, hero, full
+# List them with:  imgforge profiles
