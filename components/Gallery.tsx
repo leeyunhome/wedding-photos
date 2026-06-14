@@ -1,17 +1,25 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import type { Photo } from "@/lib/types";
 import { getCategory } from "@/lib/storage";
 
 const FAVORITES_KEY = "wedding-favorites";
+const FAVORITES_FILTER = "즐겨찾기";
 
 // ── useFavorites ──────────────────────────────────────────────────────────────
 
 function useFavorites() {
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
-  // Load from localStorage after mount (avoids SSR mismatch)
   useEffect(() => {
     try {
       const stored = localStorage.getItem(FAVORITES_KEY);
@@ -57,12 +65,10 @@ function PhotoCard({
       className="group relative w-full overflow-hidden"
       style={{ aspectRatio: photo.aspectRatio }}
     >
-      {/* Clickable image area */}
       <button
         onClick={onClick}
         className="absolute inset-0 w-full h-full cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400"
       >
-        {/* Placeholder */}
         <div
           className={`absolute inset-0 transition-opacity duration-500 ${
             loaded ? "opacity-0" : "opacity-100"
@@ -99,7 +105,6 @@ function PhotoCard({
         </picture>
       </button>
 
-      {/* Favorite button */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -107,14 +112,15 @@ function PhotoCard({
         }}
         aria-label={isFavorited ? "즐겨찾기 해제" : "즐겨찾기"}
         className={`absolute top-1.5 right-1.5 z-10 w-8 h-8 flex items-center justify-center rounded-full transition-all duration-200
-          ${isFavorited
-            ? "opacity-100 bg-black/30"
-            : "opacity-0 group-hover:opacity-100 bg-black/20"
+          ${
+            isFavorited
+              ? "opacity-100 bg-black/30"
+              : "opacity-0 group-hover:opacity-100 bg-black/20"
           }`}
       >
         <svg
           viewBox="0 0 24 24"
-          className="w-4 h-4 transition-colors duration-200"
+          className="w-4 h-4"
           fill={isFavorited ? "#f87171" : "none"}
           stroke={isFavorited ? "#f87171" : "white"}
           strokeWidth={2}
@@ -126,24 +132,141 @@ function PhotoCard({
   );
 }
 
+// ── SimilarityPanel ───────────────────────────────────────────────────────────
+
+type SimilarState =
+  | { status: "idle" }
+  | { status: "loading"; done: number; total: number; backend?: string }
+  | { status: "done"; photos: Photo[] }
+  | { status: "error" };
+
+function SimilarityPanel({
+  allPhotos,
+  current,
+  onSelect,
+}: {
+  allPhotos: Photo[];
+  current: Photo;
+  onSelect: (photo: Photo) => void;
+}) {
+  const [state, setState] = useState<SimilarState>({ status: "idle" });
+
+  // Reset when target photo changes
+  useEffect(() => setState({ status: "idle" }), [current.id]);
+
+  const handleFind = useCallback(async () => {
+    setState({ status: "loading", done: 0, total: allPhotos.length - 1 });
+    try {
+      const { findSimilar } = await import("@/lib/similarity");
+      const results = await findSimilar(allPhotos, current, 12, (done, total, backend) =>
+        setState({ status: "loading", done, total, backend })
+      );
+      setState({ status: "done", photos: results });
+    } catch {
+      setState({ status: "error" });
+    }
+  }, [allPhotos, current]);
+
+  if (state.status === "idle") {
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); handleFind(); }}
+        className="text-white/40 hover:text-white/80 text-xs border border-white/15 hover:border-white/30 rounded-full px-3 py-1.5 transition-colors flex items-center gap-2"
+      >
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+          <circle cx="11" cy="11" r="8" />
+          <path d="m21 21-4.35-4.35" />
+        </svg>
+        유사한 사진 찾기
+      </button>
+    );
+  }
+
+  if (state.status === "loading") {
+    const pct = state.total > 0 ? Math.round((state.done / state.total) * 100) : 0;
+    return (
+      <div className="flex flex-col items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 text-white/40 text-xs">
+          <div className="w-3 h-3 border border-white/25 border-t-white/60 rounded-full animate-spin" />
+          {state.done === 0
+            ? "모델 로딩 중 (첫 실행 약 20초)..."
+            : `분석 중 ${pct}%`}
+          {state.backend && state.backend !== "unknown" && (
+            <span className="text-white/20">· {state.backend}</span>
+          )}
+        </div>
+        {state.done > 0 && (
+          <div className="w-40 bg-white/10 rounded-full h-0.5">
+            <div
+              className="bg-white/35 h-0.5 rounded-full transition-all duration-100"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (state.status === "error") {
+    return (
+      <button
+        onClick={(e) => { e.stopPropagation(); handleFind(); }}
+        className="text-white/30 text-xs hover:text-white/50 transition-colors"
+      >
+        분석 실패 — 다시 시도
+      </button>
+    );
+  }
+
+  // done
+  return (
+    <div
+      className="flex flex-col items-center gap-2 w-full"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <p className="text-white/25 text-xs">유사한 사진</p>
+      <div className="flex gap-1.5 overflow-x-auto w-full px-4 justify-center pb-1">
+        {state.photos.map((photo) => (
+          <button
+            key={photo.id}
+            onClick={() => onSelect(photo)}
+            className="flex-shrink-0 w-14 h-14 overflow-hidden rounded opacity-60 hover:opacity-100 transition-opacity ring-0 hover:ring-2 ring-white/50"
+          >
+            <img
+              src={photo.fallback}
+              alt=""
+              loading="lazy"
+              className="w-full h-full object-cover"
+            />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Lightbox ──────────────────────────────────────────────────────────────────
 
 function Lightbox({
   photos,
+  allPhotos,
   initialIndex,
   favorites,
   onToggleFavorite,
   onClose,
 }: {
   photos: Photo[];
+  allPhotos: Photo[];
   initialIndex: number;
   favorites: Set<string>;
   onToggleFavorite: (id: string) => void;
   onClose: () => void;
 }) {
+  // navPhotos starts as filtered set; jumps to allPhotos when navigating from similarity results
+  const [navPhotos, setNavPhotos] = useState(photos);
   const [index, setIndex] = useState(initialIndex);
-  const photo = photos[index];
-  const total = photos.length;
+  const photo = navPhotos[index];
+  const total = navPhotos.length;
 
   const prev = useCallback(
     () => setIndex((i) => (i > 0 ? i - 1 : total - 1)),
@@ -169,15 +292,26 @@ function Lightbox({
     return () => { document.body.style.overflow = ""; };
   }, []);
 
-  if (!photo) return null;
+  const handleSelectSimilar = useCallback(
+    (selected: Photo) => {
+      const idx = allPhotos.findIndex((p) => p.id === selected.id);
+      if (idx !== -1) {
+        setNavPhotos(allPhotos);
+        setIndex(idx);
+      }
+    },
+    [allPhotos]
+  );
 
+  if (!photo) return null;
   const isFav = favorites.has(photo.id);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/92"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/92"
       onClick={onClose}
     >
+      {/* Photo */}
       <div className="relative" onClick={(e) => e.stopPropagation()}>
         <picture>
           {photo.srcset.avif && (
@@ -192,7 +326,7 @@ function Lightbox({
             sizes="90vw"
             alt=""
             draggable={false}
-            className="max-w-[90vw] max-h-[90vh] object-contain select-none"
+            className="max-w-[90vw] max-h-[75vh] object-contain select-none"
           />
         </picture>
       </div>
@@ -206,7 +340,7 @@ function Lightbox({
         ×
       </button>
 
-      {/* Favorite in lightbox */}
+      {/* Favorite */}
       <button
         onClick={(e) => { e.stopPropagation(); onToggleFavorite(photo.id); }}
         aria-label={isFav ? "즐겨찾기 해제" : "즐겨찾기"}
@@ -245,17 +379,25 @@ function Lightbox({
         </button>
       )}
 
-      {/* Counter */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white/40 text-sm tabular-nums">
-        {index + 1} / {total}
+      {/* Bottom: counter + similarity panel */}
+      <div
+        className="absolute bottom-4 left-0 right-0 flex flex-col items-center gap-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-white/35 text-sm tabular-nums">
+          {index + 1} / {total}
+        </div>
+        <SimilarityPanel
+          allPhotos={allPhotos}
+          current={photo}
+          onSelect={handleSelectSimilar}
+        />
       </div>
     </div>
   );
 }
 
 // ── Gallery ───────────────────────────────────────────────────────────────────
-
-const FAVORITES_FILTER = "즐겨찾기";
 
 export default function Gallery({
   photos,
@@ -268,6 +410,13 @@ export default function Gallery({
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const { favorites, toggle: toggleFavorite } = useFavorites();
 
+  // Column count derived from container width (mirrors Tailwind breakpoints)
+  const [cols, setCols] = useState(5);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // scrollMargin = distance from page top to grid container (for virtualizer)
+  const [scrollMargin, setScrollMargin] = useState(0);
+
   const filtered =
     active === FAVORITES_FILTER
       ? photos.filter((p) => favorites.has(p.id))
@@ -275,14 +424,52 @@ export default function Gallery({
       ? photos.filter((p) => getCategory(p) === active)
       : photos;
 
-  const openLightbox = useCallback((idx: number) => setLightboxIndex(idx), []);
-  const closeLightbox = useCallback(() => setLightboxIndex(null), []);
+  // Scroll to top when filter changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+  }, [active]);
+
+  // Responsive column detection
+  useEffect(() => {
+    const el = gridRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width;
+      setCols(w < 640 ? 2 : w < 1024 ? 3 : w < 1280 ? 4 : 5);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Compute scrollMargin after layout (synchronous, no paint flash)
+  useLayoutEffect(() => {
+    if (gridRef.current) {
+      setScrollMargin(
+        gridRef.current.getBoundingClientRect().top + window.scrollY
+      );
+    }
+  }, [active]);
+
+  // Group filtered photos into rows of `cols`
+  const rows = useMemo(() => {
+    const r: Photo[][] = [];
+    for (let i = 0; i < filtered.length; i += cols) {
+      r.push(filtered.slice(i, i + cols));
+    }
+    return r;
+  }, [filtered, cols]);
+
+  const rowVirtualizer = useWindowVirtualizer({
+    count: rows.length,
+    estimateSize: () => 280,
+    overscan: 3,
+    scrollMargin,
+  });
 
   return (
     <div className="px-2 pb-16 max-w-screen-2xl mx-auto">
       {/* Filter tabs */}
       <div className="flex gap-2 flex-wrap justify-center mb-6">
-        {/* 전체 */}
         <button
           onClick={() => setActive(null)}
           className={`px-4 py-1.5 text-sm rounded-full border transition-colors ${
@@ -294,7 +481,6 @@ export default function Gallery({
           전체
         </button>
 
-        {/* Category tabs */}
         {categories.map((cat) => (
           <button
             key={cat}
@@ -309,12 +495,9 @@ export default function Gallery({
           </button>
         ))}
 
-        {/* Favorites tab */}
         <button
           onClick={() =>
-            setActive(
-              active === FAVORITES_FILTER ? null : FAVORITES_FILTER
-            )
+            setActive(active === FAVORITES_FILTER ? null : FAVORITES_FILTER)
           }
           className={`px-4 py-1.5 text-sm rounded-full border transition-colors flex items-center gap-1.5 ${
             active === FAVORITES_FILTER
@@ -333,7 +516,11 @@ export default function Gallery({
           </svg>
           즐겨찾기
           {favorites.size > 0 && (
-            <span className={`text-xs ${active === FAVORITES_FILTER ? "text-white/80" : "text-red-400"}`}>
+            <span
+              className={`text-xs ${
+                active === FAVORITES_FILTER ? "text-white/80" : "text-red-400"
+              }`}
+            >
               {favorites.size}
             </span>
           )}
@@ -343,33 +530,64 @@ export default function Gallery({
       {/* Empty favorites state */}
       {active === FAVORITES_FILTER && filtered.length === 0 && (
         <div className="text-center py-20 text-stone-400">
-          <svg viewBox="0 0 24 24" className="w-10 h-10 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" strokeWidth={1.5}>
+          <svg
+            viewBox="0 0 24 24"
+            className="w-10 h-10 mx-auto mb-3 opacity-30"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+          >
             <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
           </svg>
           <p className="text-sm">사진에 마우스를 올려 ♥ 를 눌러보세요</p>
         </div>
       )}
 
-      {/* Photo grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-0.5">
-        {filtered.map((photo, i) => (
-          <PhotoCard
-            key={photo.id}
-            photo={photo}
-            isFavorited={favorites.has(photo.id)}
-            onToggleFavorite={toggleFavorite}
-            onClick={() => openLightbox(i)}
-          />
+      {/* Virtualized photo grid */}
+      <div
+        ref={gridRef}
+        style={{ position: "relative", height: rowVirtualizer.getTotalSize() }}
+      >
+        {rowVirtualizer.getVirtualItems().map((vRow) => (
+          <div
+            key={vRow.index}
+            data-index={vRow.index}
+            ref={rowVirtualizer.measureElement}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              transform: `translateY(${vRow.start - scrollMargin}px)`,
+              display: "grid",
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              gap: "2px",
+            }}
+          >
+            {rows[vRow.index].map((photo, ci) => {
+              const globalIdx = vRow.index * cols + ci;
+              return (
+                <PhotoCard
+                  key={photo.id}
+                  photo={photo}
+                  isFavorited={favorites.has(photo.id)}
+                  onToggleFavorite={toggleFavorite}
+                  onClick={() => setLightboxIndex(globalIdx)}
+                />
+              );
+            })}
+          </div>
         ))}
       </div>
 
       {lightboxIndex !== null && (
         <Lightbox
           photos={filtered}
+          allPhotos={photos}
           initialIndex={lightboxIndex}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
-          onClose={closeLightbox}
+          onClose={() => setLightboxIndex(null)}
         />
       )}
     </div>
