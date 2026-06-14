@@ -138,7 +138,7 @@ type SimilarState =
   | { status: "idle" }
   | { status: "loading"; done: number; total: number; backend?: string }
   | { status: "done"; photos: Photo[] }
-  | { status: "error" };
+  | { status: "error"; message?: string };
 
 function SimilarityPanel({
   allPhotos,
@@ -162,8 +162,12 @@ function SimilarityPanel({
         setState({ status: "loading", done, total, backend })
       );
       setState({ status: "done", photos: results });
-    } catch {
-      setState({ status: "error" });
+    } catch (err) {
+      console.error("[similarity] findSimilar failed:", err);
+      setState({
+        status: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   }, [allPhotos, current]);
 
@@ -209,12 +213,19 @@ function SimilarityPanel({
 
   if (state.status === "error") {
     return (
-      <button
-        onClick={(e) => { e.stopPropagation(); handleFind(); }}
-        className="text-white/30 text-xs hover:text-white/50 transition-colors"
-      >
-        분석 실패 — 다시 시도
-      </button>
+      <div className="flex flex-col items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={handleFind}
+          className="text-white/40 text-xs hover:text-white/60 transition-colors border border-white/15 rounded-full px-3 py-1"
+        >
+          분석 실패 — 다시 시도
+        </button>
+        {state.message && (
+          <p className="text-white/25 text-xs max-w-xs text-center leading-tight">
+            {state.message.slice(0, 120)}
+          </p>
+        )}
+      </div>
     );
   }
 
