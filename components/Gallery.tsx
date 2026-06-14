@@ -175,9 +175,9 @@ function SimilarityPanel({
     return (
       <button
         onClick={(e) => { e.stopPropagation(); handleFind(); }}
-        className="text-white/75 hover:text-white text-xs border border-white/35 hover:border-white/60 rounded-full px-3 py-1.5 transition-colors flex items-center gap-2"
+        className="bg-white/15 hover:bg-white/25 text-white text-xs rounded-full px-4 py-2 transition-colors flex items-center gap-2"
       >
-        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2}>
+        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" strokeWidth={2}>
           <circle cx="11" cy="11" r="8" />
           <path d="m21 21-4.35-4.35" />
         </svg>
