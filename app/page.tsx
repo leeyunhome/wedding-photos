@@ -1,4 +1,5 @@
 import Gallery from "@/components/Gallery";
+import HighlightVideo from "@/components/HighlightVideo";
 
 export const runtime = "edge";
 
@@ -13,6 +14,7 @@ export default function HomePage() {
           이윤호 · 진수빈
         </h1>
       </header>
+      <HighlightVideo />
       <Gallery />
     </main>
   );
